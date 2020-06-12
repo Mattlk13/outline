@@ -8,6 +8,7 @@ import {
   EditIcon,
   SearchIcon,
   StarredIcon,
+  TrashIcon,
   PlusIcon,
 } from 'outline-icons';
 
@@ -25,12 +26,14 @@ import Bubble from './components/Bubble';
 
 import AuthStore from 'stores/AuthStore';
 import DocumentsStore from 'stores/DocumentsStore';
+import PoliciesStore from 'stores/PoliciesStore';
 import UiStore from 'stores/UiStore';
 import { observable } from 'mobx';
 
 type Props = {
   auth: AuthStore,
   documents: DocumentsStore,
+  policies: PoliciesStore,
   ui: UiStore,
 };
 
@@ -42,11 +45,13 @@ class MainSidebar extends React.Component<Props> {
     this.props.documents.fetchDrafts();
   }
 
-  handleCreateCollection = () => {
+  handleCreateCollection = (ev: SyntheticEvent<>) => {
+    ev.preventDefault();
     this.props.ui.setActiveModal('collection-new');
   };
 
-  handleInviteModalOpen = () => {
+  handleInviteModalOpen = (ev: SyntheticEvent<>) => {
+    ev.preventDefault();
     this.inviteModalOpen = true;
   };
 
@@ -55,11 +60,12 @@ class MainSidebar extends React.Component<Props> {
   };
 
   render() {
-    const { auth, documents } = this.props;
+    const { auth, documents, policies } = this.props;
     const { user, team } = auth;
     if (!user || !team) return null;
 
     const draftDocumentsCount = documents.drafts.length;
+    const can = policies.abilities(team.id);
 
     return (
       <Sidebar>
@@ -77,7 +83,7 @@ class MainSidebar extends React.Component<Props> {
           <Scrollable shadow>
             <Section>
               <SidebarLink
-                to="/dashboard"
+                to="/home"
                 icon={<HomeIcon />}
                 exact={false}
                 label="Home"
@@ -108,7 +114,10 @@ class MainSidebar extends React.Component<Props> {
                   </Drafts>
                 }
                 active={
-                  documents.active ? !documents.active.publishedAt : undefined
+                  documents.active
+                    ? !documents.active.publishedAt &&
+                      !documents.active.isDeleted
+                    : undefined
                 }
               />
             </Section>
@@ -122,11 +131,23 @@ class MainSidebar extends React.Component<Props> {
                 exact={false}
                 label="Archive"
                 active={
-                  documents.active ? documents.active.isArchived : undefined
+                  documents.active
+                    ? documents.active.isArchived && !documents.active.isDeleted
+                    : undefined
                 }
               />
-              {user.isAdmin && (
+              <SidebarLink
+                to="/trash"
+                icon={<TrashIcon />}
+                exact={false}
+                label="Trash"
+                active={
+                  documents.active ? documents.active.isDeleted : undefined
+                }
+              />
+              {can.invite && (
                 <SidebarLink
+                  to="/settings/people"
                   onClick={this.handleInviteModalOpen}
                   icon={<PlusIcon />}
                   label="Invite people…"
@@ -151,4 +172,4 @@ const Drafts = styled(Flex)`
   height: 24px;
 `;
 
-export default inject('documents', 'auth', 'ui')(MainSidebar);
+export default inject('documents', 'policies', 'auth', 'ui')(MainSidebar);

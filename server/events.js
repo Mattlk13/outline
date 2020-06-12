@@ -1,5 +1,6 @@
 // @flow
-import Queue from 'bull';
+import * as Sentry from '@sentry/node';
+import { createQueue } from './utils/queue';
 import services from './services';
 
 export type UserEvent =
@@ -78,6 +79,33 @@ export type CollectionEvent =
       collectionId: string,
       teamId: string,
       actorId: string,
+    }
+  | {
+      name: 'collections.add_group' | 'collections.remove_group',
+      collectionId: string,
+      teamId: string,
+      actorId: string,
+      data: { name: string, groupId: string },
+      ip: string,
+    };
+
+export type GroupEvent =
+  | {
+      name: 'groups.create' | 'groups.delete' | 'groups.update',
+      actorId: string,
+      modelId: string,
+      teamId: string,
+      data: { name: string },
+      ip: string,
+    }
+  | {
+      name: 'groups.add_user' | 'groups.remove_user',
+      actorId: string,
+      userId: string,
+      modelId: string,
+      teamId: string,
+      data: { name: string },
+      ip: string,
     };
 
 export type IntegrationEvent = {
@@ -91,10 +119,11 @@ export type Event =
   | UserEvent
   | DocumentEvent
   | CollectionEvent
-  | IntegrationEvent;
+  | IntegrationEvent
+  | GroupEvent;
 
-const globalEventsQueue = new Queue('global events', process.env.REDIS_URL);
-const serviceEventsQueue = new Queue('service events', process.env.REDIS_URL);
+const globalEventsQueue = createQueue('global events');
+const serviceEventsQueue = createQueue('service events');
 
 // this queue processes global events and hands them off to service hooks
 globalEventsQueue.process(async job => {
@@ -116,7 +145,16 @@ serviceEventsQueue.process(async job => {
   const service = services[event.service];
 
   if (service.on) {
-    service.on(event);
+    service.on(event).catch(error => {
+      if (process.env.SENTRY_DSN) {
+        Sentry.withScope(function(scope) {
+          scope.setExtra('event', event);
+          Sentry.captureException(error);
+        });
+      } else {
+        throw error;
+      }
+    });
   }
 });
 

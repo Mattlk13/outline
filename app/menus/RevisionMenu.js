@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { withRouter, type RouterHistory } from 'react-router-dom';
 import { inject } from 'mobx-react';
-import { MoreIcon } from 'outline-icons';
 
 import CopyToClipboard from 'components/CopyToClipboard';
 import { DropdownMenu, DropdownMenuItem } from 'components/DropdownMenu';
@@ -12,13 +11,13 @@ import Document from 'models/Document';
 import UiStore from 'stores/UiStore';
 
 type Props = {
-  label?: React.Node,
   onOpen?: () => void,
   onClose: () => void,
   history: RouterHistory,
   document: Document,
   revision: Revision,
   className?: string,
+  label: React.Node,
   ui: UiStore,
 };
 
@@ -35,7 +34,7 @@ class RevisionMenu extends React.Component<Props> {
   };
 
   render() {
-    const { label, className, onOpen, onClose } = this.props;
+    const { className, label, onOpen, onClose } = this.props;
     const url = `${window.location.origin}${documentHistoryUrl(
       this.props.document,
       this.props.revision.id
@@ -43,10 +42,10 @@ class RevisionMenu extends React.Component<Props> {
 
     return (
       <DropdownMenu
-        label={label || <MoreIcon />}
         onOpen={onOpen}
         onClose={onClose}
         className={className}
+        label={label}
       >
         <DropdownMenuItem onClick={this.handleRestore}>
           Restore version

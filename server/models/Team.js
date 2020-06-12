@@ -10,7 +10,7 @@ import {
   stripSubdomain,
   RESERVED_SUBDOMAINS,
 } from '../../shared/utils/domains';
-import parseTitle from '../../shared/utils/parseTitle';
+import { ValidationError } from '../errors';
 
 import Collection from './Collection';
 import Document from './Document';
@@ -51,6 +51,11 @@ const Team = sequelize.define(
     googleId: { type: DataTypes.STRING, allowNull: true },
     avatarUrl: { type: DataTypes.STRING, allowNull: true },
     sharing: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    guestSignin: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
     documentEmbeds: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -86,12 +91,18 @@ Team.associate = models => {
 
 const uploadAvatar = async model => {
   const endpoint = publicS3Endpoint();
+  const { avatarUrl } = model;
 
-  if (model.avatarUrl && !model.avatarUrl.startsWith(endpoint)) {
+  if (
+    avatarUrl &&
+    !avatarUrl.startsWith('/api') &&
+    !avatarUrl.startsWith(endpoint)
+  ) {
     try {
       const newUrl = await uploadToS3FromUrl(
-        model.avatarUrl,
-        `avatars/${model.id}/${uuid.v4()}`
+        avatarUrl,
+        `avatars/${model.id}/${uuid.v4()}`,
+        'public-read'
       );
       if (newUrl) model.avatarUrl = newUrl;
     } catch (err) {
@@ -130,14 +141,19 @@ Team.prototype.provisionFirstCollection = async function(userId) {
 
   // For the first collection we go ahead and create some intitial documents to get
   // the team started. You can edit these in /server/onboarding/x.md
-  const onboardingDocs = ['support', 'integrations', 'editor', 'philosophy'];
-  for (const name of onboardingDocs) {
+  const onboardingDocs = [
+    '❤️ Support',
+    '🚀 Integrations & API',
+    '📝 Our Editor',
+    '👋 What is Outline',
+  ];
+  for (const title of onboardingDocs) {
     const text = await readFile(
-      path.join(__dirname, '..', 'onboarding', `${name}.md`),
+      path.join(__dirname, '..', 'onboarding', `${title}.md`),
       'utf8'
     );
-    const { title } = parseTitle(text);
     const document = await Document.create({
+      version: 1,
       isWelcome: true,
       parentDocumentId: null,
       collectionId: collection.id,
@@ -170,13 +186,13 @@ Team.prototype.removeAdmin = async function(user: User) {
   if (res.count >= 1) {
     return user.update({ isAdmin: false });
   } else {
-    throw new Error('At least one admin is required');
+    throw new ValidationError('At least one admin is required');
   }
 };
 
 Team.prototype.suspendUser = async function(user: User, admin: User) {
   if (user.id === admin.id)
-    throw new Error('Unable to suspend the current user');
+    throw new ValidationError('Unable to suspend the current user');
   return user.update({
     suspendedById: admin.id,
     suspendedAt: new Date(),
@@ -188,6 +204,15 @@ Team.prototype.activateUser = async function(user: User, admin: User) {
     suspendedById: null,
     suspendedAt: null,
   });
+};
+
+Team.prototype.collectionIds = async function(paranoid: boolean = true) {
+  let models = await Collection.findAll({
+    attributes: ['id', 'private'],
+    where: { teamId: this.id, private: false },
+    paranoid,
+  });
+  return models.map(c => c.id);
 };
 
 Team.beforeSave(uploadAvatar);

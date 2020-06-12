@@ -3,7 +3,7 @@ import { observable, action, computed, autorun, runInAction } from 'mobx';
 import invariant from 'invariant';
 import { getCookie, setCookie, removeCookie } from 'tiny-cookie';
 import { client } from 'utils/ApiClient';
-import { stripSubdomain } from 'shared/utils/domains';
+import { getCookieDomain } from 'shared/utils/domains';
 import RootStore from 'stores/RootStore';
 import User from 'models/User';
 import Team from 'models/Team';
@@ -29,8 +29,8 @@ export default class AuthStore {
     }
 
     this.rootStore = rootStore;
-    this.user = data.user;
-    this.team = data.team;
+    this.user = new User(data.user);
+    this.team = new Team(data.team);
     this.token = getCookie('accessToken');
 
     if (this.token) setImmediate(() => this.fetch());
@@ -43,6 +43,12 @@ export default class AuthStore {
       }
     });
   }
+
+  addPolicies = policies => {
+    if (policies) {
+      policies.forEach(policy => this.rootStore.policies.add(policy));
+    }
+  };
 
   @computed
   get authenticated(): boolean {
@@ -64,17 +70,17 @@ export default class AuthStore {
       invariant(res && res.data, 'Auth not available');
 
       runInAction('AuthStore#fetch', () => {
+        this.addPolicies(res.policies);
         const { user, team } = res.data;
-        this.user = user;
-        this.team = team;
+        this.user = new User(user);
+        this.team = new Team(team);
 
-        if (window.Bugsnag) {
-          Bugsnag.user = {
-            id: user.id,
-            name: user.name,
-            teamId: team.id,
-            team: team.name,
-          };
+        if (window.Sentry) {
+          Sentry.configureScope(function(scope) {
+            scope.setUser({ id: user.id });
+            scope.setExtra('team', team.name);
+            scope.setExtra('teamId', team.id);
+          });
         }
 
         // If we came from a redirect then send the user immediately there
@@ -112,6 +118,7 @@ export default class AuthStore {
       invariant(res && res.data, 'User response not available');
 
       runInAction('AuthStore#updateUser', () => {
+        this.addPolicies(res.policies);
         this.user = res.data;
       });
     } finally {
@@ -132,7 +139,8 @@ export default class AuthStore {
       invariant(res && res.data, 'Team response not available');
 
       runInAction('AuthStore#updateTeam', () => {
-        this.team = res.data;
+        this.addPolicies(res.policies);
+        this.team = new Team(res.data);
       });
     } finally {
       this.isSaving = false;
@@ -166,7 +174,7 @@ export default class AuthStore {
       delete sessions[team.id];
 
       setCookie('sessions', JSON.stringify(sessions), {
-        domain: stripSubdomain(window.location.hostname),
+        domain: getCookieDomain(window.location.hostname),
       });
       this.team = null;
     }

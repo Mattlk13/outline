@@ -57,8 +57,14 @@ class Layout extends React.Component<Props> {
     }
   }
 
+  updateBackground() {
+    // ensure the wider page color always matches the theme
+    window.document.body.style.background = this.props.theme.background;
+  }
+
   @keydown('shift+/')
   handleOpenKeyboardShortcuts() {
+    if (this.props.ui.editMode) return;
     this.keyboardShortcutsOpen = true;
   }
 
@@ -66,13 +72,9 @@ class Layout extends React.Component<Props> {
     this.keyboardShortcutsOpen = false;
   };
 
-  updateBackground() {
-    // ensure the wider page color always matches the theme
-    window.document.body.style.background = this.props.theme.background;
-  }
-
-  @keydown(['/', 't', 'meta+k'])
+  @keydown(['t', '/', 'meta+k'])
   goToSearch(ev) {
+    if (this.props.ui.editMode) return;
     ev.preventDefault();
     ev.stopPropagation();
     this.redirectTo = searchUrl();
@@ -80,6 +82,7 @@ class Layout extends React.Component<Props> {
 
   @keydown('d')
   goToDashboard() {
+    if (this.props.ui.editMode) return;
     this.redirectTo = homeUrl();
   }
 
@@ -142,7 +145,7 @@ const Container = styled(Flex)`
   background: ${props => props.theme.background};
   transition: ${props => props.theme.backgroundTransition};
   position: relative;
-  width: 100vw;
+  width: 100%;
   min-height: 100%;
 `;
 

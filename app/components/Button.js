@@ -1,7 +1,7 @@
 // @flow
 import * as React from 'react';
 import styled from 'styled-components';
-import { darken } from 'polished';
+import { darken, lighten } from 'polished';
 import { ExpandedIcon } from 'outline-icons';
 
 const RealButton = styled.button`
@@ -23,7 +23,7 @@ const RealButton = styled.button`
   user-select: none;
 
   svg {
-    fill: ${props => props.theme.buttonText};
+    fill: ${props => props.iconColor || props.theme.buttonText};
   }
 
   &::-moz-focus-inner {
@@ -33,6 +33,13 @@ const RealButton = styled.button`
 
   &:hover {
     background: ${props => darken(0.05, props.theme.buttonBackground)};
+  }
+
+  &:focus {
+    transition-duration: 0.05s;
+    box-shadow: ${props => lighten(0.4, props.theme.buttonBackground)} 0px 0px
+      0px 3px;
+    outline: none;
   }
 
   &:disabled {
@@ -46,16 +53,27 @@ const RealButton = styled.button`
     `
     background: ${props.theme.buttonNeutralBackground};
     color: ${props.theme.buttonNeutralText};
-    box-shadow: rgba(0, 0, 0, 0.07) 0px 1px 2px;
-    border: 1px solid ${darken(0.1, props.theme.buttonNeutralBackground)};
+    box-shadow: ${
+      props.borderOnHover ? 'none' : 'rgba(0, 0, 0, 0.07) 0px 1px 2px'
+    };
+    border: 1px solid ${
+      props.borderOnHover ? 'transparent' : props.theme.buttonNeutralBorder
+    };
 
     svg {
-      fill: ${props.theme.buttonNeutralText};
+      fill: ${props.iconColor || props.theme.buttonNeutralText};
     }
 
     &:hover {
       background: ${darken(0.05, props.theme.buttonNeutralBackground)};
-      border: 1px solid ${darken(0.15, props.theme.buttonNeutralBackground)};
+      border: 1px solid ${props.theme.buttonNeutralBorder};
+    }
+
+    &:focus {
+      transition-duration: 0.05s;
+      border: 1px solid ${lighten(0.4, props.theme.buttonBackground)};
+      box-shadow: ${lighten(0.4, props.theme.buttonBackground)} 0px 0px
+        0px 2px;
     }
 
     &:disabled {
@@ -69,6 +87,12 @@ const RealButton = styled.button`
 
     &:hover {
       background: ${darken(0.05, props.theme.danger)};
+    }
+
+    &:focus {
+      transition-duration: 0.05s;
+      box-shadow: ${lighten(0.4, props.theme.danger)} 0px 0px
+        0px 3px;
     }
   `};
 `;
@@ -89,32 +113,37 @@ export const Inner = styled.span`
   justify-content: center;
   align-items: center;
 
-  ${props => props.hasIcon && 'padding-left: 4px;'};
+  ${props => props.hasIcon && props.hasText && 'padding-left: 4px;'};
+  ${props => props.hasIcon && !props.hasText && 'padding: 0 4px;'};
 `;
 
 export type Props = {
   type?: string,
   value?: string,
   icon?: React.Node,
+  iconColor?: string,
   className?: string,
   children?: React.Node,
+  innerRef?: React.ElementRef<any>,
   disclosure?: boolean,
+  borderOnHover?: boolean,
 };
 
-export default function Button({
+function Button({
   type = 'text',
   icon,
   children,
   value,
   disclosure,
+  innerRef,
   ...rest
 }: Props) {
   const hasText = children !== undefined || value !== undefined;
   const hasIcon = icon !== undefined;
 
   return (
-    <RealButton type={type} {...rest}>
-      <Inner hasIcon={hasIcon} disclosure={disclosure}>
+    <RealButton type={type} ref={innerRef} {...rest}>
+      <Inner hasIcon={hasIcon} hasText={hasText} disclosure={disclosure}>
         {hasIcon && icon}
         {hasText && <Label hasIcon={hasIcon}>{children || value}</Label>}
         {disclosure && <ExpandedIcon />}
@@ -122,3 +151,8 @@ export default function Button({
     </RealButton>
   );
 }
+
+// $FlowFixMe - need to upgrade to get forwardRef
+export default React.forwardRef((props, ref) => (
+  <Button {...props} innerRef={ref} />
+));

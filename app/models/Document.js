@@ -1,5 +1,6 @@
 // @flow
-import { action, set, computed } from 'mobx';
+import { action, set, observable, computed } from 'mobx';
+import addDays from 'date-fns/add_days';
 import invariant from 'invariant';
 import { client } from 'utils/ApiClient';
 import parseTitle from 'shared/utils/parseTitle';
@@ -9,10 +10,16 @@ import Revision from 'models/Revision';
 import User from 'models/User';
 import DocumentsStore from 'stores/DocumentsStore';
 
-type SaveOptions = { publish?: boolean, done?: boolean, autosave?: boolean };
+type SaveOptions = {
+  publish?: boolean,
+  done?: boolean,
+  autosave?: boolean,
+  lastRevision?: number,
+};
 
 export default class Document extends BaseModel {
-  isSaving: boolean;
+  @observable isSaving: boolean = false;
+  @observable embedsDisabled: boolean = false;
   store: DocumentsStore;
 
   collaborators: User[];
@@ -37,14 +44,14 @@ export default class Document extends BaseModel {
   shareUrl: ?string;
   revision: number;
 
-  constructor(data?: Object = {}, store: DocumentsStore) {
-    super(data, store);
-    this.updateTitle();
+  get emoji() {
+    const { emoji } = parseTitle(this.title);
+    return emoji;
   }
 
-  @action
-  updateTitle() {
-    set(this, parseTitle(this.text));
+  @computed
+  get isOnlyTitle(): boolean {
+    return !this.text.trim();
   }
 
   @computed
@@ -72,6 +79,15 @@ export default class Document extends BaseModel {
     return !this.publishedAt;
   }
 
+  @computed
+  get permanentlyDeletedAt(): ?string {
+    if (!this.deletedAt) {
+      return undefined;
+    }
+
+    return addDays(new Date(this.deletedAt), 30).toString();
+  }
+
   @action
   share = async () => {
     const res = await client.post('/shares.create', { documentId: this.id });
@@ -83,7 +99,6 @@ export default class Document extends BaseModel {
   @action
   updateFromJson = data => {
     set(this, data);
-    this.updateTitle();
   };
 
   archive = () => {
@@ -95,10 +110,23 @@ export default class Document extends BaseModel {
   };
 
   @action
+  enableEmbeds = () => {
+    this.embedsDisabled = false;
+  };
+
+  @action
+  disableEmbeds = () => {
+    this.embedsDisabled = true;
+    debugger;
+  };
+
+  @action
   pin = async () => {
     this.pinned = true;
     try {
-      await this.store.pin(this);
+      const res = await this.store.pin(this);
+      invariant(res && res.data, 'Data should be available');
+      this.updateFromJson(res.data);
     } catch (err) {
       this.pinned = false;
       throw err;
@@ -109,7 +137,9 @@ export default class Document extends BaseModel {
   unpin = async () => {
     this.pinned = false;
     try {
-      await this.store.unpin(this);
+      const res = await this.store.unpin(this);
+      invariant(res && res.data, 'Data should be available');
+      this.updateFromJson(res.data);
     } catch (err) {
       this.pinned = true;
       throw err;
@@ -127,8 +157,8 @@ export default class Document extends BaseModel {
   };
 
   @action
-  view = async () => {
-    await client.post('/views.create', { documentId: this.id });
+  view = () => {
+    return this.store.rootStore.views.create({ documentId: this.id });
   };
 
   @action
@@ -143,9 +173,7 @@ export default class Document extends BaseModel {
     if (this.isSaving) return this;
 
     const isCreating = !this.id;
-    const wasDraft = !this.publishedAt;
     this.isSaving = true;
-    this.updateTitle();
 
     try {
       if (isCreating) {
@@ -158,19 +186,18 @@ export default class Document extends BaseModel {
         });
       }
 
-      return await this.store.update({
-        id: this.id,
-        title: this.title,
-        text: this.text,
-        lastRevision: this.revision,
-        ...options,
-      });
-    } finally {
-      if (wasDraft && options.publish) {
-        this.store.rootStore.collections.fetch(this.collectionId, {
-          force: true,
+      if (options.lastRevision) {
+        return await this.store.update({
+          id: this.id,
+          title: this.title,
+          text: this.text,
+          lastRevision: options.lastRevision,
+          ...options,
         });
       }
+
+      throw new Error('Attempting to update without a lastRevision');
+    } finally {
       this.isSaving = false;
     }
   };
@@ -187,14 +214,17 @@ export default class Document extends BaseModel {
     // Ensure the document is upto date with latest server contents
     await this.fetch();
 
-    const blob = new Blob([unescape(this.text)], { type: 'text/markdown' });
+    const body = unescape(this.text);
+    const blob = new Blob([`# ${this.title}\n\n${body}`], {
+      type: 'text/markdown',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
 
     // Firefox support requires the anchor tag be in the DOM to trigger the dl
     if (document.body) document.body.appendChild(a);
     a.href = url;
-    a.download = `${this.title}.md`;
+    a.download = `${this.title || 'Untitled'}.md`;
     a.click();
   };
 }

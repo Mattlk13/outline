@@ -1,12 +1,17 @@
 // @flow
 import compress from 'koa-compress';
-import { contentSecurityPolicy } from 'koa-helmet';
+import { compact } from 'lodash';
+import helmet, {
+  contentSecurityPolicy,
+  dnsPrefetchControl,
+  referrerPolicy,
+} from 'koa-helmet';
 import logger from 'koa-logger';
 import mount from 'koa-mount';
 import enforceHttps from 'koa-sslify';
 import Koa from 'koa';
-import bugsnag from 'bugsnag';
 import onerror from 'koa-onerror';
+import * as Sentry from '@sentry/node';
 import updates from './utils/updates';
 
 import auth from './auth';
@@ -41,12 +46,6 @@ if (process.env.NODE_ENV === 'development') {
         // that means no watching, but recompilation on every request
         lazy: false,
 
-        // // watch options (only lazy: false)
-        // watchOptions: {
-        //   aggregateTimeout: 300,
-        //   poll: true
-        // },
-
         // public path to bind the middleware to
         // use the same as in webpack
         publicPath: config.output.publicPath,
@@ -71,46 +70,93 @@ if (process.env.NODE_ENV === 'development') {
 
   app.use(mount('/emails', emails));
 } else if (process.env.NODE_ENV === 'production') {
-  // Force HTTPS on all pages
-  app.use(
-    enforceHttps({
-      trustProtoHeader: true,
-    })
-  );
+  // Force redirect to HTTPS protocol unless explicitly disabled
+  if (process.env.FORCE_HTTPS !== 'false') {
+    app.use(
+      enforceHttps({
+        trustProtoHeader: true,
+      })
+    );
+  } else {
+    console.warn('Enforced https was disabled with FORCE_HTTPS env variable');
+  }
 
   // trust header fields set by our proxy. eg X-Forwarded-For
   app.proxy = true;
-
-  // catch errors in one place, automatically set status and response headers
-  onerror(app);
-
-  if (process.env.BUGSNAG_KEY) {
-    bugsnag.register(process.env.BUGSNAG_KEY, {
-      filters: ['authorization'],
-    });
-    app.on('error', (error, ctx) => {
-      // we don't need to report every time a request stops to the bug tracker
-      if (error.code === 'EPIPE' || error.code === 'ECONNRESET') {
-        console.warn('Connection error', { error });
-      } else {
-        bugsnag.koaHandler(error, ctx);
-      }
-    });
-  }
 }
+
+// catch errors in one place, automatically set status and response headers
+onerror(app);
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    maxBreadcrumbs: 0,
+    ignoreErrors: [
+      // emitted by Koa when bots attempt to snoop on paths such as wp-admin
+      // or the user submits a bad request. These are expected in normal running
+      // of the application
+      'BadRequestError',
+      'UnauthorizedError',
+    ],
+  });
+}
+
+app.on('error', (error, ctx) => {
+  // we don't need to report every time a request stops to the bug tracker
+  if (error.code === 'EPIPE' || error.code === 'ECONNRESET') {
+    console.warn('Connection error', { error });
+    return;
+  }
+
+  if (process.env.SENTRY_DSN) {
+    Sentry.withScope(function(scope) {
+      const requestId = ctx.headers['x-request-id'];
+      if (requestId) {
+        scope.setTag('request_id', requestId);
+      }
+      scope.addEventProcessor(function(event) {
+        return Sentry.Handlers.parseRequest(event, ctx.request);
+      });
+      Sentry.captureException(error);
+    });
+  } else {
+    console.error(error);
+  }
+});
 
 app.use(mount('/auth', auth));
 app.use(mount('/api', api));
-app.use(mount(routes));
 
+app.use(helmet());
 app.use(
   contentSecurityPolicy({
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        'gist.github.com',
+        'www.google-analytics.com',
+        'browser.sentry-cdn.com',
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", 'github.githubassets.com'],
+      imgSrc: ['*', 'data:', 'blob:'],
+      frameSrc: ['*'],
+      connectSrc: compact([
+        "'self'",
+        process.env.AWS_S3_UPLOAD_BUCKET_URL.replace('s3:', 'localhost:'),
+        'www.google-analytics.com',
+        'sentry.io',
+      ]),
     },
   })
 );
+app.use(dnsPrefetchControl({ allow: true }));
+app.use(referrerPolicy({ policy: 'no-referrer' }));
+app.use(mount(routes));
 
 /**
  * Production updates and anonymous analytics.

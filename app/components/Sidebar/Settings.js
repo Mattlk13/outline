@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { observer, inject } from 'mobx-react';
 import type { RouterHistory } from 'react-router-dom';
+import styled from 'styled-components';
 import {
   DocumentIcon,
   EmailIcon,
@@ -9,9 +10,11 @@ import {
   PadlockIcon,
   CodeIcon,
   UserIcon,
+  GroupIcon,
   LinkIcon,
   TeamIcon,
   BulletedListIcon,
+  ExpandedIcon,
 } from 'outline-icons';
 import ZapierIcon from './icons/Zapier';
 import SlackIcon from './icons/Slack';
@@ -23,10 +26,12 @@ import Section from './components/Section';
 import Header from './components/Header';
 import SidebarLink from './components/SidebarLink';
 import HeaderBlock from './components/HeaderBlock';
+import PoliciesStore from 'stores/PoliciesStore';
 import AuthStore from 'stores/AuthStore';
 
 type Props = {
   history: RouterHistory,
+  policies: PoliciesStore,
   auth: AuthStore,
 };
 
@@ -37,13 +42,20 @@ class SettingsSidebar extends React.Component<Props> {
   };
 
   render() {
-    const { team, user } = this.props.auth;
-    if (!team || !user) return null;
+    const { policies, auth } = this.props;
+    const { team } = auth;
+    if (!team) return null;
+
+    const can = policies.abilities(team.id);
 
     return (
       <Sidebar>
         <HeaderBlock
-          subheading="◄ Return to App"
+          subheading={
+            <ReturnToApp align="center">
+              <BackIcon /> Return to App
+            </ReturnToApp>
+          }
           teamName={team.name}
           logoUrl={team.avatarUrl}
           onClick={this.returnToDashboard}
@@ -71,14 +83,14 @@ class SettingsSidebar extends React.Component<Props> {
             </Section>
             <Section>
               <Header>Team</Header>
-              {user.isAdmin && (
+              {can.update && (
                 <SidebarLink
                   to="/settings/details"
                   icon={<TeamIcon />}
                   label="Details"
                 />
               )}
-              {user.isAdmin && (
+              {can.update && (
                 <SidebarLink
                   to="/settings/security"
                   icon={<PadlockIcon />}
@@ -92,18 +104,24 @@ class SettingsSidebar extends React.Component<Props> {
                 label="People"
               />
               <SidebarLink
+                to="/settings/groups"
+                icon={<GroupIcon />}
+                exact={false}
+                label="Groups"
+              />
+              <SidebarLink
                 to="/settings/shares"
                 icon={<LinkIcon />}
                 label="Share Links"
               />
-              {user.isAdmin && (
+              {can.auditLog && (
                 <SidebarLink
                   to="/settings/events"
                   icon={<BulletedListIcon />}
                   label="Audit Log"
                 />
               )}
-              {user.isAdmin && (
+              {can.export && (
                 <SidebarLink
                   to="/settings/export"
                   icon={<DocumentIcon />}
@@ -111,7 +129,7 @@ class SettingsSidebar extends React.Component<Props> {
                 />
               )}
             </Section>
-            {user.isAdmin && (
+            {can.update && (
               <Section>
                 <Header>Integrations</Header>
                 <SidebarLink
@@ -133,4 +151,13 @@ class SettingsSidebar extends React.Component<Props> {
   }
 }
 
-export default inject('auth')(SettingsSidebar);
+const BackIcon = styled(ExpandedIcon)`
+  transform: rotate(90deg);
+  margin-left: -8px;
+`;
+
+const ReturnToApp = styled(Flex)`
+  height: 16px;
+`;
+
+export default inject('auth', 'policies')(SettingsSidebar);

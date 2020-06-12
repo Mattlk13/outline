@@ -26,15 +26,11 @@ type Props = {
 
 @observer
 class SidebarLink extends React.Component<Props> {
-  @observable expanded: boolean;
+  @observable expanded: ?boolean = this.props.expanded;
 
   style = {
     paddingLeft: `${(this.props.depth || 0) * 16 + 16}px`,
   };
-
-  componentDidMount() {
-    if (this.props.expanded) this.handleExpand();
-  }
 
   componentWillReceiveProps(nextProps: Props) {
     if (nextProps.expanded !== undefined) {
@@ -46,6 +42,7 @@ class SidebarLink extends React.Component<Props> {
   handleClick = (ev: SyntheticEvent<>) => {
     ev.preventDefault();
     ev.stopPropagation();
+
     this.expanded = !this.expanded;
   };
 
@@ -140,6 +137,12 @@ const StyledNavLink = styled(NavLink)`
     color: ${props => props.theme.text};
   }
 
+  &:focus {
+    color: ${props => props.theme.text};
+    background: ${props => props.theme.sidebarItemBackground};
+    outline: none;
+  }
+
   &:hover {
     > ${Action} {
       display: inline;
@@ -154,7 +157,8 @@ const Wrapper = styled(Flex)`
 const Label = styled.div`
   position: relative;
   width: 100%;
-  max-height: 4.4em;
+  max-height: 4.8em;
+  line-height: 1.6;
 `;
 
 const Disclosure = styled(CollapsedIcon)`

@@ -10,14 +10,17 @@ import { newDocumentUrl } from 'utils/routeHelpers';
 import Header from './Header';
 import SidebarLink from './SidebarLink';
 import CollectionLink from './CollectionLink';
+import CollectionsLoading from './CollectionsLoading';
 import Fade from 'components/Fade';
 
 import CollectionsStore from 'stores/CollectionsStore';
+import PoliciesStore from 'stores/PoliciesStore';
 import UiStore from 'stores/UiStore';
 import DocumentsStore from 'stores/DocumentsStore';
 
 type Props = {
   history: RouterHistory,
+  policies: PoliciesStore,
   collections: CollectionsStore,
   documents: DocumentsStore,
   onCreateCollection: () => void,
@@ -29,13 +32,22 @@ class Collections extends React.Component<Props> {
   isPreloaded: boolean = !!this.props.collections.orderedData.length;
 
   componentDidMount() {
-    this.props.collections.fetchPage({ limit: 100 });
+    const { collections } = this.props;
+
+    if (!collections.isFetching && !collections.isLoaded) {
+      collections.fetchPage({ limit: 100 });
+    }
   }
 
   @keydown('n')
   goToNewDocument() {
+    if (this.props.ui.editMode) return;
+
     const { activeCollectionId } = this.props.ui;
     if (!activeCollectionId) return;
+
+    const can = this.props.policies.abilities(activeCollectionId);
+    if (!can.update) return;
 
     this.props.history.push(newDocumentUrl(activeCollectionId));
   }
@@ -44,8 +56,7 @@ class Collections extends React.Component<Props> {
     const { collections, ui, documents } = this.props;
 
     const content = (
-      <Flex column>
-        <Header>Collections</Header>
+      <React.Fragment>
         {collections.orderedData.map(collection => (
           <CollectionLink
             key={collection.id}
@@ -57,20 +68,32 @@ class Collections extends React.Component<Props> {
           />
         ))}
         <SidebarLink
+          to="/collections"
           onClick={this.props.onCreateCollection}
           icon={<PlusIcon />}
           label="New collection…"
+          exact
         />
-      </Flex>
+      </React.Fragment>
     );
 
     return (
-      collections.isLoaded &&
-      (this.isPreloaded ? content : <Fade>{content}</Fade>)
+      <Flex column>
+        <Header>Collections</Header>
+        {collections.isLoaded ? (
+          this.isPreloaded ? (
+            content
+          ) : (
+            <Fade>{content}</Fade>
+          )
+        ) : (
+          <CollectionsLoading />
+        )}
+      </Flex>
     );
   }
 }
 
-export default inject('collections', 'ui', 'documents')(
+export default inject('collections', 'ui', 'documents', 'policies')(
   withRouter(Collections)
 );

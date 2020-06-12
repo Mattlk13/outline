@@ -1,8 +1,17 @@
 // @flow
+import pkg from 'rich-markdown-editor/package.json';
 import { map, trim } from 'lodash';
 import invariant from 'invariant';
 import stores from 'stores';
 import download from './download';
+import {
+  AuthorizationError,
+  NetworkError,
+  NotFoundError,
+  OfflineError,
+  RequestError,
+  UpdateRequiredError,
+} from './errors';
 
 type Options = {
   baseUrl?: string,
@@ -41,6 +50,7 @@ class ApiClient {
       Accept: 'application/json',
       'Content-Type': 'application/json',
       'cache-control': 'no-cache',
+      'x-editor-version': pkg.version,
       pragma: 'no-cache',
     });
     if (stores.auth.authenticated) {
@@ -60,9 +70,9 @@ class ApiClient {
       });
     } catch (err) {
       if (window.navigator.onLine) {
-        throw new Error('A network error occurred, try again?');
+        throw new NetworkError('A network error occurred, try again?');
       } else {
-        throw new Error('No internet connection available');
+        throw new OfflineError('No internet connection available');
       }
     }
 
@@ -100,7 +110,20 @@ class ApiClient {
       // we're trying to parse an error so JSON may not be valid
     }
 
-    throw error;
+    if (response.status === 400 && error.error === 'editor_update_required') {
+      window.location.reload(true);
+      throw new UpdateRequiredError(error.message);
+    }
+
+    if (response.status === 403) {
+      throw new AuthorizationError(error.message);
+    }
+
+    if (response.status === 404) {
+      throw new NotFoundError(error.message);
+    }
+
+    throw new RequestError(error.message);
   };
 
   get = (path: string, data: ?Object, options?: Object) => {

@@ -1,7 +1,5 @@
 /* eslint-disable flowtype/require-valid-file-annotation */
-import embeds from '.';
-
-const { Abstract } = embeds;
+import Abstract from './Abstract';
 
 describe('Abstract', () => {
   const match = Abstract.ENABLED[0];
@@ -52,7 +50,7 @@ describe('Abstract', () => {
     expect('https://goabstract.com'.match(match)).toBe(null);
     expect('https://app.goabstract.com'.match(match)).toBe(null);
     expect('https://abstract.com/features'.match(match)).toBe(null);
-    expect('https://app.abstract.com/dashboard'.match(match)).toBe(null);
+    expect('https://app.abstract.com/home'.match(match)).toBe(null);
     expect('https://abstract.com/pricing'.match(match)).toBe(null);
     expect('https://goabstract.com/pricing'.match(match)).toBe(null);
     expect('https://www.goabstract.com/pricing'.match(match)).toBe(null);

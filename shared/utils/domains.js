@@ -42,6 +42,14 @@ export function parseDomain(url: string): ?Domain {
   return null;
 }
 
+export function getCookieDomain(domain: string) {
+  // TODO: All the process.env parsing needs centralizing
+  return process.env.SUBDOMAINS_ENABLED === 'true' ||
+    process.env.SUBDOMAINS_ENABLED === true
+    ? stripSubdomain(domain)
+    : domain;
+}
+
 export function stripSubdomain(hostname: string) {
   const parsed = parseDomain(hostname);
   if (!parsed) return hostname;
@@ -83,7 +91,9 @@ export const RESERVED_SUBDOMAINS = [
   'imap',
   'localhost',
   'mail',
+  'marketing',
   'mobile',
+  'new',
   'news',
   'newsletter',
   'ns1',
@@ -98,6 +108,7 @@ export const RESERVED_SUBDOMAINS = [
   'setup',
   'signin',
   'signup',
+  'site',
   'smtp',
   'support',
   'status',
@@ -108,6 +119,7 @@ export const RESERVED_SUBDOMAINS = [
   'updates',
   'ws',
   'wss',
+  'web',
   'websockets',
   'www',
   'www1',
